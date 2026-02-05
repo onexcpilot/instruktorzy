@@ -10,6 +10,7 @@ declare global {
   interface Window {
     google: any;
     gapi: any;
+    emailjs: any;
   }
 }
 
@@ -23,15 +24,26 @@ const App: React.FC = () => {
   const [viewingInstructor, setViewingInstructor] = useState<User | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
   
-  // Login states
+  // Konfiguracja EmailJS pobierana z localStorage (ustawiana przez Admina w UI)
+  const [emailConfig, setEmailConfig] = useState({
+    serviceId: localStorage.getItem('sierra_email_service_id') || '',
+    templateId: localStorage.getItem('sierra_email_template_id') || '',
+    publicKey: localStorage.getItem('sierra_email_public_key') || ''
+  });
+
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
-  
-  // Password change states
+  const [lastInviteInfo, setLastInviteInfo] = useState<{email: string, pass: string, sent: boolean, error?: string} | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const [newPass, setNewPass] = useState('');
   const [adminChangePass, setAdminChangePass] = useState<{userId: string, pass: string} | null>(null);
 
   useEffect(() => {
+    // Inicjalizacja EmailJS jeśli klucz jest dostępny
+    if (emailConfig.publicKey && window.emailjs) {
+      window.emailjs.init(emailConfig.publicKey);
+    }
+
     const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
 
     const handleCredentialResponse = (response: any) => {
@@ -54,7 +66,7 @@ const App: React.FC = () => {
           db.users.push(user);
           saveDb(db);
         } else if (!user) {
-          alert(`Brak uprawnień dla ${userEmail}. Poproś o zaproszenie.`);
+          alert(`Brak uprawnień. Admin musi dodać Twój email do bazy.`);
           return;
         }
         setCurrentUser(user);
@@ -88,7 +100,7 @@ const App: React.FC = () => {
       }
     }, 500);
     return () => clearInterval(scriptCheck);
-  }, [currentUser]);
+  }, [currentUser, emailConfig.publicKey]);
 
   const handleEmailLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,76 +112,109 @@ const App: React.FC = () => {
     }
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPass.length < 6) {
-      alert("Hasło musi mieć min. 6 znaków.");
-      return;
-    }
-    if (currentUser) {
-      const updated = { ...currentUser, password: newPass };
-      updateUser(updated);
-      setCurrentUser(updated);
-      setNewPass('');
-      alert("Hasło zostało zmienione.");
-    }
-  };
+    if (!inviteEmail) return;
+    setIsSending(true);
+    const tempPass = 'sierra' + Math.floor(100 + Math.random() * 900); 
+    const targetEmail = inviteEmail;
 
-  const handleAdminResetPass = (userId: string) => {
-    if (!adminChangePass || adminChangePass.pass.length < 6) {
-        alert("Wpisz min. 6 znaków hasła.");
-        return;
-    }
+    // 1. Dodanie do bazy
     const db = getDb();
-    const user = db.users.find(u => u.id === userId);
-    if (user) {
-        user.password = adminChangePass.pass;
-        saveDb(db);
-        alert(`Hasło dla ${user.fullName} zostało zaktualizowane.`);
-        setAdminChangePass(null);
-        // Refresh local viewing instructor if it's the same
-        if (viewingInstructor?.id === userId) setViewingInstructor({...user});
-    }
-  };
-
-  const handleGoogleCalendarSync = (doc: DocumentRecord, instructorName: string) => {
-    if (!tokenClient) return alert("Google API niegotowe.");
-    tokenClient.callback = async (resp: any) => {
-      if (resp.error) return;
-      const event = {
-        'summary': `ALARM DTO: Wygasa ${doc.name} - ${instructorName}`,
-        'start': { 'date': doc.expiryDate },
-        'end': { 'date': doc.expiryDate },
-        'reminders': { 'useDefault': false, 'overrides': [{ 'method': 'email', 'minutes': 10080 }] }
-      };
-      const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${resp.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(event)
-      });
-      if (response.ok) alert("TERMIN DODANY!");
-    };
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  };
-
-  const handleInvite = (e: React.FormEvent) => {
-    e.preventDefault();
-    createInvitation(inviteEmail);
-    const db = getDb();
-    if (!db.users.find(u => u.email === inviteEmail)) {
+    if (!db.users.find(u => u.email === targetEmail)) {
         db.users.push({
             id: Math.random().toString(36).substring(7),
-            email: inviteEmail,
-            password: 'sierra', // Domyślne hasło dla nowych
-            fullName: 'Oczekujący Instruktor',
+            email: targetEmail,
+            password: tempPass,
+            fullName: targetEmail.split('@')[0],
             role: UserRole.INSTRUCTOR,
             documents: [],
             isInvited: true
         });
         saveDb(db);
     }
+
+    // 2. Wysyłka e-maila
+    let emailSent = false;
+    let errorMsg = undefined;
+
+    if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
+      try {
+        await window.emailjs.send(emailConfig.serviceId, emailConfig.templateId, {
+          to_email: targetEmail,
+          password: tempPass,
+          link: window.location.origin
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error("EmailJS Error:", err);
+        errorMsg = "Błąd automatycznej wysyłki. Skopiuj dane ręcznie.";
+      }
+    } else {
+      errorMsg = "Brak konfiguracji EmailJS w Ustawieniach. Wysyłka tylko ręczna.";
+    }
+
+    setLastInviteInfo({ email: targetEmail, pass: tempPass, sent: emailSent, error: errorMsg });
     setInviteEmail('');
-    alert(`Zaproszenie wysłane. Domyślne hasło: sierra`);
+    setIsSending(false);
+  };
+
+  const handleGoogleCalendarSync = (doc: DocumentRecord, instructorName: string) => {
+    if (!tokenClient) return alert("Błąd: Google Client nie gotowy.");
+
+    tokenClient.callback = async (response: any) => {
+      if (response.error) return;
+
+      const event = {
+        'summary': `ALARM DTO: Wygasa ${doc.name} - ${instructorName}`,
+        'description': `Wygasający dokument: ${doc.name}`,
+        'start': { 'date': doc.expiryDate },
+        'end': { 'date': doc.expiryDate },
+        'reminders': {
+          'useDefault': false,
+          'overrides': [{ 'method': 'email', 'minutes': 10080 }] // 7 dni wcześniej
+        }
+      };
+
+      try {
+        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${response.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(event)
+        });
+        if (res.ok) alert("Pomyślnie dodano do kalendarza!");
+      } catch (err) { alert("Błąd synchronizacji."); }
+    };
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  };
+
+  const handleAdminResetPass = (userId: string) => {
+    if (!adminChangePass) return;
+    const db = getDb();
+    const userIndex = db.users.findIndex(u => u.id === userId);
+    if (userIndex !== -1) {
+      db.users[userIndex].password = adminChangePass.pass;
+      saveDb(db);
+      setAdminChangePass(null);
+      alert("Hasło zmienione.");
+    }
+  };
+
+  const saveEmailConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('sierra_email_service_id', emailConfig.serviceId);
+    localStorage.setItem('sierra_email_template_id', emailConfig.templateId);
+    localStorage.setItem('sierra_email_public_key', emailConfig.publicKey);
+    if (emailConfig.publicKey && window.emailjs) window.emailjs.init(emailConfig.publicKey);
+    alert("Konfiguracja poczty zapisana.");
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert("Skopiowano do schowka!");
   };
 
   const handleDocUpload = (newDoc: DocumentRecord) => {
@@ -189,32 +234,21 @@ const App: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-inter">
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-lg border-t-8 border-blue-600 text-center">
           <img src={LOGO_URL} alt="Sierra Zulu" className="h-20 mx-auto mb-6" />
           <h1 className="text-2xl font-black uppercase italic mb-8">Sierra Zulu Portal</h1>
-          
-          <div className="space-y-6">
-            <form onSubmit={handleEmailLogin} className="space-y-3">
-               <input type="email" placeholder="E-mail (login)" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-500" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} />
-               <input type="password" placeholder="Hasło" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-500" value={loginPass} onChange={e => setLoginPass(e.target.value)} />
-               <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs hover:bg-slate-800 transition-all">Zaloguj</button>
-            </form>
-
-            <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-slate-200"></div>
-                <span className="flex-shrink mx-4 text-[10px] font-black text-slate-400 uppercase">lub</span>
-                <div className="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <div className="flex justify-center">
-                <div id="google_login_btn"></div>
-            </div>
+          <form onSubmit={handleEmailLogin} className="space-y-4 mb-6">
+               <input type="email" placeholder="Email" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} />
+               <input type="password" placeholder="Hasło" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginPass} onChange={e => setLoginPass(e.target.value)} />
+               <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs hover:bg-slate-800 transition-all shadow-xl">Zaloguj się</button>
+          </form>
+          <div className="relative flex py-2 items-center mb-6">
+              <div className="flex-grow border-t border-slate-200"></div>
+              <span className="flex-shrink mx-4 text-[10px] font-black text-slate-400 uppercase">lub</span>
+              <div className="flex-grow border-t border-slate-200"></div>
           </div>
-
-          <p className="mt-8 text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
-            Administrator: onexcpilot@gmail.com<br/>Hasło startowe: sierra
-          </p>
+          <div id="google_login_btn"></div>
         </div>
       </div>
     );
@@ -231,42 +265,41 @@ const App: React.FC = () => {
           <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase italic">Aviation Portal</span>
         </div>
         <nav className="flex-1 space-y-4">
-          <button onClick={() => {setActiveTab('dashboard'); setViewingInstructor(null);}} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' && !viewingInstructor ? 'bg-blue-600' : 'text-slate-500 hover:text-white'}`}>
+          <button onClick={() => {setActiveTab('dashboard'); setViewingInstructor(null);}} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' && !viewingInstructor ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
             <i className="fas fa-user-pilot"></i><span className="font-black text-xs uppercase italic">Mój Profil</span>
           </button>
           {isAdmin && (
-            <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-600' : 'text-slate-500 hover:text-white'}`}>
+            <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
               <i className="fas fa-tower-control"></i><span className="font-black text-xs uppercase italic">Instruktorzy</span>
             </button>
           )}
-          <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'settings' ? 'bg-blue-600' : 'text-slate-500 hover:text-white'}`}>
-            <i className="fas fa-shield-alt"></i><span className="font-black text-xs uppercase italic">Bezpieczeństwo</span>
+          <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
+            <i className="fas fa-cog"></i><span className="font-black text-xs uppercase italic">Ustawienia</span>
           </button>
         </nav>
         <div className="mt-auto pt-6 border-t border-slate-800">
           <p className="text-[10px] font-black uppercase italic text-blue-400">{currentUser.fullName}</p>
-          <button onClick={() => setCurrentUser(null)} className="mt-4 text-[9px] font-black text-red-400 uppercase tracking-widest hover:text-red-300">Wyloguj się</button>
+          <button onClick={() => setCurrentUser(null)} className="mt-4 text-[9px] font-black text-red-400 uppercase tracking-widest">Wyloguj się</button>
         </div>
       </aside>
 
       <main className="flex-1 p-6 md:p-14 overflow-y-auto">
         {activeTab === 'dashboard' && !viewingInstructor && (
           <div className="max-w-5xl mx-auto space-y-12">
-            <header><h1 className="text-4xl font-black text-slate-900 uppercase italic">Dokumentacja</h1></header>
+            <header><h1 className="text-4xl font-black text-slate-900 uppercase italic">Moje Dokumenty</h1></header>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
               <div className="lg:col-span-8 space-y-8">
                 <LawSummary />
                 <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 space-y-4">
                    {currentUser.documents.filter(d => !d.isArchived).map(doc => (
-                     <div key={doc.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl hover:bg-white hover:shadow-lg transition-all border border-transparent hover:border-slate-100">
+                     <div key={doc.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
                        <div>
                             <p className="font-black text-xs uppercase italic">{doc.name}</p>
-                            <p className="text-[9px] font-bold text-slate-400">Ważność: {doc.expiryDate || 'BEZTERMINOWO'}</p>
+                            <p className="text-[9px] font-bold text-slate-400">Termin: {doc.expiryDate || 'Bezterminowo'}</p>
                        </div>
                        <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center"><i className="fas fa-eye"></i></a>
                      </div>
                    ))}
-                   {currentUser.documents.length === 0 && <p className="text-center text-slate-400 text-xs py-10 font-bold uppercase tracking-widest">Brak przesłanych dokumentów</p>}
                 </div>
               </div>
               <div className="lg:col-span-4"><DocumentUpload onUpload={handleDocUpload} /></div>
@@ -276,33 +309,41 @@ const App: React.FC = () => {
 
         {activeTab === 'admin' && (
           <div className="max-w-5xl mx-auto space-y-12">
-            <header className="flex justify-between items-center">
-              <h1 className="text-4xl font-black text-slate-900 uppercase italic">Baza Pilotów</h1>
-            </header>
+            <header className="flex justify-between items-center"><h1 className="text-4xl font-black text-slate-900 uppercase italic">Baza Pilotów</h1></header>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-               <div className="lg:col-span-4">
+               <div className="lg:col-span-4 space-y-6">
                   <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
-                    <h3 className="font-black text-xs uppercase mb-6 italic">Dodaj instruktora</h3>
+                    <h3 className="font-black text-xs uppercase mb-6 italic text-blue-600">Zaproś nowego</h3>
                     <form onSubmit={handleInvite} className="space-y-4">
-                      <input type="email" required placeholder="E-mail" className="w-full p-4 bg-slate-50 rounded-xl border-none outline-none text-sm" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
-                      <button className="w-full bg-blue-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-lg shadow-blue-100">Wyślij Zaproszenie</button>
+                      <input type="email" required placeholder="E-mail instruktora" className="w-full p-4 bg-slate-50 rounded-xl outline-none text-sm" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+                      <button disabled={isSending} className={`w-full ${isSending ? 'bg-slate-400' : 'bg-blue-600'} text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-lg transition-all`}>
+                        {isSending ? 'Trwa wysyłka...' : 'Zaproś Instruktora'}
+                      </button>
                     </form>
                   </div>
+                  {lastInviteInfo && (
+                    <div className={`p-8 rounded-[2.5rem] border ${lastInviteInfo.sent ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                        <h4 className={`text-[10px] font-black uppercase mb-3 ${lastInviteInfo.sent ? 'text-green-700' : 'text-orange-700'}`}>
+                            {lastInviteInfo.sent ? 'Zaproszenie wysłane!' : 'Błąd wysyłki automatu'}
+                        </h4>
+                        <div className="bg-white p-4 rounded-xl text-[10px] font-mono break-all mb-4">
+                            Login: {lastInviteInfo.email}<br/>Hasło: {lastInviteInfo.pass}
+                        </div>
+                        <button onClick={() => copyToClipboard(`Zaproszenie Sierra Zulu:\nLogin: ${lastInviteInfo.email}\nHasło: ${lastInviteInfo.pass}\nLink: ${window.location.origin}`)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-[9px] font-black uppercase">Skopiuj dane ręcznie</button>
+                    </div>
+                  )}
                </div>
                <div className="lg:col-span-8">
-                  <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-100">
+                  <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8 text-right">Zarządzanie</th></tr></thead>
+                      <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8 text-right">Opcje</th></tr></thead>
                       <tbody className="divide-y divide-slate-50">
                         {allInstructors.map(inst => (
-                          <tr key={inst.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="p-8">
-                                <p className="font-black text-xs uppercase italic">{inst.fullName}</p>
-                                <p className="text-[10px] text-slate-400">{inst.email}</p>
-                            </td>
-                            <td className="p-8 text-right flex justify-end space-x-2">
-                                <button onClick={() => setViewingInstructor(inst)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase italic tracking-widest">Akta</button>
-                                <button onClick={() => setAdminChangePass({userId: inst.id, pass: ''})} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase italic tracking-widest">Hasło</button>
+                          <tr key={inst.id} className="hover:bg-slate-50/50">
+                            <td className="p-8"><p className="font-black text-xs uppercase italic">{inst.fullName}</p><p className="text-[10px] text-slate-400">{inst.email}</p></td>
+                            <td className="p-8 text-right space-x-2">
+                                <button onClick={() => setViewingInstructor(inst)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Akta</button>
+                                <button onClick={() => setAdminChangePass({userId: inst.id, pass: ''})} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Hasło</button>
                             </td>
                           </tr>
                         ))}
@@ -315,14 +356,23 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'settings' && (
-          <div className="max-w-xl mx-auto space-y-8">
-            <h1 className="text-4xl font-black text-slate-900 uppercase italic">Bezpieczeństwo</h1>
-            <div className="bg-white p-12 rounded-[3rem] shadow-xl border border-slate-100">
-                <h2 className="font-black text-xs uppercase mb-6 italic">Zmień moje hasło</h2>
-                <form onSubmit={handleChangePassword} className="space-y-4">
-                    <input type="password" required placeholder="Nowe hasło (min. 6 znaków)" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none" value={newPass} onChange={e => setNewPass(e.target.value)} />
-                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj profil</button>
+          <div className="max-w-2xl mx-auto space-y-8">
+            <h1 className="text-4xl font-black text-slate-900 uppercase italic">Ustawienia</h1>
+            {isAdmin && (
+              <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-blue-100">
+                <h2 className="font-black text-sm uppercase mb-6 italic text-blue-600">Integracja EmailJS</h2>
+                <form onSubmit={saveEmailConfig} className="space-y-4">
+                    <input type="text" placeholder="Service ID" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} />
+                    <input type="text" placeholder="Template ID" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} />
+                    <input type="text" placeholder="Public Key" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} />
+                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zapisz Klucze Poczty</button>
                 </form>
+              </div>
+            )}
+            <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
+                <h2 className="font-black text-sm uppercase mb-6 italic">Zmiana Hasła</h2>
+                <input type="password" placeholder="Nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl text-sm mb-4" value={newPass} onChange={e => setNewPass(e.target.value)} />
+                <button onClick={() => {if(newPass.length>=6){updateUser({...currentUser!, password: newPass}); setNewPass(''); alert("Zmieniono!");}}} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj Moje Hasło</button>
             </div>
           </div>
         )}
@@ -331,17 +381,11 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto space-y-8">
             <button onClick={() => setViewingInstructor(null)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900"><i className="fas fa-arrow-left mr-2"></i> Powrót do listy</button>
             <div className="bg-white p-12 rounded-[4rem] shadow-2xl">
-              <h2 className="text-4xl font-black uppercase italic mb-10 text-slate-900">{viewingInstructor.fullName}</h2>
+              <h2 className="text-4xl font-black uppercase italic mb-10">{viewingInstructor.fullName}</h2>
               <div className="space-y-4">
                 {viewingInstructor.documents.filter(d => !d.isArchived).map(doc => (
-                  <div key={doc.id} className="p-8 bg-slate-50 rounded-[2.5rem] flex items-center justify-between border border-transparent hover:border-blue-100 hover:bg-white transition-all group">
-                    <div className="flex items-center space-x-6">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-500 shadow-sm"><i className="fas fa-file-contract"></i></div>
-                      <div>
-                        <p className="font-black text-sm uppercase italic">{doc.name}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Termin: {doc.expiryDate || 'N/A'}</p>
-                      </div>
-                    </div>
+                  <div key={doc.id} className="p-8 bg-slate-50 rounded-[2.5rem] flex items-center justify-between">
+                    <div><p className="font-black text-sm uppercase italic">{doc.name}</p><p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Wygasa: {doc.expiryDate || 'N/A'}</p></div>
                     <div className="flex space-x-3">
                       {doc.expiryDate && (
                         <button onClick={() => handleGoogleCalendarSync(doc, viewingInstructor.fullName)} className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><i className="fas fa-calendar-plus"></i></button>
@@ -350,26 +394,20 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 ))}
+                {viewingInstructor.documents.length === 0 && <p className="text-center py-10 text-slate-400 uppercase font-black text-xs">Brak wgranych dokumentów</p>}
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal zmiany hasła przez Admina */}
         {adminChangePass && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-                <div className="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-md">
+                <div className="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-md text-center">
                     <h3 className="text-xl font-black uppercase italic mb-6">Ustaw nowe hasło</h3>
-                    <input 
-                        type="text" 
-                        placeholder="Nowe hasło" 
-                        className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 outline-none mb-6"
-                        value={adminChangePass.pass}
-                        onChange={e => setAdminChangePass({...adminChangePass, pass: e.target.value})}
-                    />
+                    <input type="text" placeholder="Wpisz nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center font-bold mb-6" value={adminChangePass.pass} onChange={e => setAdminChangePass({...adminChangePass, pass: e.target.value})} />
                     <div className="grid grid-cols-2 gap-4">
                         <button onClick={() => setAdminChangePass(null)} className="py-4 text-[10px] font-black uppercase text-slate-400">Anuluj</button>
-                        <button onClick={() => handleAdminResetPass(adminChangePass.userId)} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest">Zapisz hasło</button>
+                        <button onClick={() => handleAdminResetPass(adminChangePass.userId)} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100">Zapisz</button>
                     </div>
                 </div>
             </div>
