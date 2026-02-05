@@ -147,7 +147,15 @@ app.get('/api/health', async (req, res) => {
 
 // Każdy inny request zwraca index.html (obsługa routingu React)
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    const indexPath = fs.existsSync(distPath)
+        ? path.join(distPath, 'index.html')
+        : path.join(rootPath, 'index.html');
+
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Błąd: Nie znaleziono pliku index.html. Upewnij się, że wgrałeś zawartość folderu dist.');
+    }
 });
 
 app.listen(PORT, () => {
