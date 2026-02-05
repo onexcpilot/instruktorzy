@@ -29,6 +29,7 @@ declare global {
 
 const LOGO_URL = "https://sierrazulu.waw.pl/wp-content/uploads/2025/03/Podnagloweklustrzane1.png";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -37,13 +38,7 @@ const App: React.FC = () => {
   const [viewingInstructor, setViewingInstructor] = useState<User | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
   
-  // Konfiguracja EmailJS pobierana z localStorage (ustawiana przez Admina w UI)
-  const [emailConfig, setEmailConfig] = useState({
-    serviceId: localStorage.getItem('sierra_email_service_id') || '',
-    templateId: localStorage.getItem('sierra_email_template_id') || '',
-    publicKey: localStorage.getItem('sierra_email_public_key') || ''
-  });
-
+  // Production: EmailJS konfiguracja jest na serwerze (server.js)
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [lastInviteInfo, setLastInviteInfo] = useState<{email: string, pass: string, sent: boolean, error?: string} | null>(null);
@@ -156,24 +151,29 @@ const App: React.FC = () => {
         saveDb(db);
     }
 
-    // 2. Wysyłka e-maila
+    // 2. Wysyłka e-maila przez backend
     let emailSent = false;
     let errorMsg = undefined;
 
-    if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
-      try {
-        await window.emailjs.send(emailConfig.serviceId, emailConfig.templateId, {
+    try {
+      const response = await fetch(`${API_URL}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           to_email: targetEmail,
           password: tempPass,
           link: window.location.origin
-        });
+        })
+      });
+
+      if (response.ok) {
         emailSent = true;
-      } catch (err) {
-        console.error("EmailJS Error:", err);
-        errorMsg = "Błąd automatycznej wysyłki. Skopiuj dane ręcznie.";
+      } else {
+        errorMsg = "Błąd wysyłki emaila. Skopiuj dane ręcznie.";
       }
-    } else {
-      errorMsg = "Brak konfiguracji EmailJS w Ustawieniach. Wysyłka tylko ręczna.";
+    } catch (err) {
+      console.error("Email API Error:", err);
+      errorMsg = "Brak dostępu do serwera email. Wysyłka tylko ręczna.";
     }
 
     setLastInviteInfo({ email: targetEmail, pass: tempPass, sent: emailSent, error: errorMsg });
@@ -223,20 +223,6 @@ const App: React.FC = () => {
       setAdminChangePass(null);
       alert("Hasło zmienione.");
     }
-  };
-
-  const saveEmailConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
-      alert('Uzupełnij wszystkie pola');
-      return;
-    }
-    // ⚠️ UWAGA: W produkcji przechowywać klucze na serwerze, nie w localStorage!
-    localStorage.setItem('sierra_email_service_id', emailConfig.serviceId);
-    localStorage.setItem('sierra_email_template_id', emailConfig.templateId);
-    localStorage.setItem('sierra_email_public_key', emailConfig.publicKey);
-    if (emailConfig.publicKey && window.emailjs) window.emailjs.init(emailConfig.publicKey);
-    alert("Konfiguracja poczty zapisana.\n⚠️ W produkcji przechowuj klucze na serwerze!");
   };
 
   const copyToClipboard = (text: string) => {
@@ -385,17 +371,10 @@ const App: React.FC = () => {
         {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto space-y-8">
             <h1 className="text-4xl font-black text-slate-900 uppercase italic">Ustawienia</h1>
-            {isAdmin && (
-              <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-blue-100">
-                <h2 className="font-black text-sm uppercase mb-6 italic text-blue-600">Integracja EmailJS</h2>
-                <form onSubmit={saveEmailConfig} className="space-y-4">
-                    <input type="text" placeholder="Service ID" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.serviceId} onChange={e => setEmailConfig({...emailConfig, serviceId: e.target.value})} />
-                    <input type="text" placeholder="Template ID" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.templateId} onChange={e => setEmailConfig({...emailConfig, templateId: e.target.value})} />
-                    <input type="text" placeholder="Public Key" className="w-full p-4 bg-slate-50 rounded-xl text-sm" value={emailConfig.publicKey} onChange={e => setEmailConfig({...emailConfig, publicKey: e.target.value})} />
-                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zapisz Klucze Poczty</button>
-                </form>
-              </div>
-            )}
+            <div className="bg-blue-50 border border-blue-200 p-8 rounded-[2.5rem]">
+              <h3 className="font-black text-sm text-blue-900 mb-3">✅ Production Mode</h3>
+              <p className="text-sm text-blue-700">EmailJS i Google Calendar są skonfigurowane na serwerze. Wysyłka emaili i synchronizacja kalendarza pracują automatycznie.</p>
+            </div>
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
                 <h2 className="font-black text-sm uppercase mb-6 italic">Zmiana Hasła</h2>
                 <input type="password" placeholder="Nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl text-sm mb-4" value={newPass} onChange={e => setNewPass(e.target.value)} />
