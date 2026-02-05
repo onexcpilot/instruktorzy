@@ -9,12 +9,23 @@ interface DbSchema {
   invitations: Invitation[];
 }
 
+// Prosty hash dla demo (w produkcji użyć bcrypt)
+const hashPassword = (pass: string): string => {
+  let hash = 0;
+  for (let i = 0; i < pass.length; i++) {
+    const char = pass.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return 'hashed_' + Math.abs(hash).toString(36);
+};
+
 const initialDb: DbSchema = {
   users: [
     {
       id: 'admin_1',
       email: ADMIN_EMAIL,
-      password: 'sierra', // Hasło startowe dla administratora
+      password: hashPassword('ChanceAdminPassword123!'), // ZMIEŃ TO NATYCHMIAST!
       fullName: 'Administrator Główny',
       role: UserRole.ADMIN,
       documents: [],
@@ -55,7 +66,7 @@ export const createInvitation = (email: string): Invitation => {
 
   const invitation: Invitation = {
     email,
-    token: Math.random().toString(36).substring(7),
+    token: Math.random().toString(36).substring(7) + Date.now().toString(36),
     invitedAt: new Date().toISOString(),
     status: 'pending'
   };
@@ -63,3 +74,9 @@ export const createInvitation = (email: string): Invitation => {
   saveDb(db);
   return invitation;
 };
+
+export const validatePassword = (pass: string, hash: string): boolean => {
+  return hashPassword(pass) === hash;
+};
+
+export { hashPassword };

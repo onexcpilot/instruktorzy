@@ -27,6 +27,13 @@ const DocumentUpload: React.FC<Props> = ({ onUpload }) => {
       return;
     }
 
+    // Sprawdzenie typu MIME
+    const invalidFile = selectedFiles.find(f => !f.type.match(/image|pdf/));
+    if (invalidFile) {
+      setError('Dozwolone tylko obrazy i PDF.');
+      return;
+    }
+
     setFiles(selectedFiles);
     setError('');
   };
@@ -42,6 +49,8 @@ const DocumentUpload: React.FC<Props> = ({ onUpload }) => {
       id: Math.random().toString(36).substring(7),
       fileName: file.name,
       fileSize: file.size,
+      // UWAGA: Dla produkcji - załaduj plik na serwer zamiast createObjectURL
+      // Ta metoda tymczasowych URL nie będzie działać po odświeżeniu
       fileUrl: URL.createObjectURL(file)
     }));
 

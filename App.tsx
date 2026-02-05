@@ -1,16 +1,29 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, DocumentRecord } from './types';
-import { findUserByEmail, getDb, saveDb, createInvitation, updateUser } from './services/mockDb';
+import { findUserByEmail, getDb, saveDb, createInvitation, updateUser, hashPassword, validatePassword } from './services/mockDb';
 import { ADMIN_EMAIL } from './constants';
 import LawSummary from './components/LawSummary';
 import DocumentUpload from './components/DocumentUpload';
 
 declare global {
   interface Window {
-    google: any;
-    gapi: any;
-    emailjs: any;
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          renderButton: (element: HTMLElement | null, config: any) => void;
+        };
+        oauth2: {
+          initTokenClient: (config: any) => any;
+        };
+      };
+    };
+    gapi?: any;
+    emailjs?: {
+      init: (key: string) => void;
+      send: (serviceId: string, templateId: string, params: any) => Promise<any>;
+    };
   }
 }
 
@@ -75,14 +88,18 @@ const App: React.FC = () => {
 
     const initGoogle = () => {
       if (window.google && clientId) {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-          auto_select: false
-        });
-        const btnContainer = document.getElementById("google_login_btn");
-        if (btnContainer) {
-          window.google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "large", width: "320" });
+        try {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleCredentialResponse,
+            auto_select: false
+          });
+          const btnContainer = document.getElementById("google_login_btn");
+          if (btnContainer) {
+            window.google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "large", width: "320" });
+          }
+        } catch (err) {
+          console.error('Google init error:', err);
         }
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: clientId,
@@ -105,8 +122,10 @@ const App: React.FC = () => {
   const handleEmailLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const user = findUserByEmail(loginEmail);
-    if (user && user.password === loginPass) {
+    if (user && validatePassword(loginPass, user.password)) {
       setCurrentUser(user);
+      setLoginEmail('');
+      setLoginPass('');
     } else {
       alert("Błędny e-mail lub hasło.");
     }
@@ -114,9 +133,12 @@ const App: React.FC = () => {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail) return;
+    if (!inviteEmail || !inviteEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      alert('Podaj poprawny adres email');
+      return;
+    }
     setIsSending(true);
-    const tempPass = 'sierra' + Math.floor(100 + Math.random() * 900); 
+    const tempPass = 'Temp' + Math.random().toString(36).substring(2, 10).toUpperCase(); 
     const targetEmail = inviteEmail;
 
     // 1. Dodanie do bazy
@@ -125,7 +147,7 @@ const App: React.FC = () => {
         db.users.push({
             id: Math.random().toString(36).substring(7),
             email: targetEmail,
-            password: tempPass,
+            password: hashPassword(tempPass),
             fullName: targetEmail.split('@')[0],
             role: UserRole.INSTRUCTOR,
             documents: [],
@@ -205,11 +227,16 @@ const App: React.FC = () => {
 
   const saveEmailConfig = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
+      alert('Uzupełnij wszystkie pola');
+      return;
+    }
+    // ⚠️ UWAGA: W produkcji przechowywać klucze na serwerze, nie w localStorage!
     localStorage.setItem('sierra_email_service_id', emailConfig.serviceId);
     localStorage.setItem('sierra_email_template_id', emailConfig.templateId);
     localStorage.setItem('sierra_email_public_key', emailConfig.publicKey);
     if (emailConfig.publicKey && window.emailjs) window.emailjs.init(emailConfig.publicKey);
-    alert("Konfiguracja poczty zapisana.");
+    alert("Konfiguracja poczty zapisana.\n⚠️ W produkcji przechowuj klucze na serwerze!");
   };
 
   const copyToClipboard = (text: string) => {
@@ -372,7 +399,7 @@ const App: React.FC = () => {
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
                 <h2 className="font-black text-sm uppercase mb-6 italic">Zmiana Hasła</h2>
                 <input type="password" placeholder="Nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl text-sm mb-4" value={newPass} onChange={e => setNewPass(e.target.value)} />
-                <button onClick={() => {if(newPass.length>=6){updateUser({...currentUser!, password: newPass}); setNewPass(''); alert("Zmieniono!");}}} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj Moje Hasło</button>
+                <button onClick={() => {if(newPass.length>=8){const db = getDb(); const updated = {...currentUser!, password: hashPassword(newPass)}; updateUser(updated); setCurrentUser(updated); setNewPass(''); alert("Hasło zmieniono!");} else alert('Min. 8 znaków')}} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj Moje Hasło</button>
             </div>
           </div>
         )}
