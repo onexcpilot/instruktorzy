@@ -141,8 +141,36 @@ app.get('/api/health', async (req, res) => {
         service: 'Sierra Zulu Production Service (Domenomania)',
         smtp: smtpStatus,
         smtp_user: process.env.SMTP_USER ? 'Configured' : 'Missing',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        env: {
+            NODE_ENV: process.env.NODE_ENV,
+            PWD: process.cwd(),
+            __dirname: __dirname
+        }
     });
+});
+
+// Diagnostyka plików
+app.get('/api/debug-files', (req, res) => {
+    try {
+        const filesInRoot = fs.readdirSync(__dirname);
+        const assetsPath = path.join(__dirname, 'assets');
+        let filesInAssets = [];
+        if (fs.existsSync(assetsPath)) {
+            filesInAssets = fs.readdirSync(assetsPath);
+        }
+
+        res.json({
+            root: __dirname,
+            filesInRoot,
+            assetsPath,
+            filesInAssets,
+            indexExists: fs.existsSync(path.join(__dirname, 'index.html')),
+            distExists: fs.existsSync(path.join(__dirname, 'dist'))
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Każdy inny request zwraca index.html (obsługa routingu React)
