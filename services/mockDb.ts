@@ -25,7 +25,7 @@ const initialDb: DbSchema = {
     {
       id: 'admin_1',
       email: ADMIN_EMAIL,
-      password: hashPassword('ChanceAdminPassword123!'), // ZMIEŃ TO NATYCHMIAST!
+      password: hashPassword('TwojeBezpieczeHaslo123!'), // ZMIEŃ TO NATYCHMIAST!
       fullName: 'Administrator Główny',
       role: UserRole.ADMIN,
       documents: [],
