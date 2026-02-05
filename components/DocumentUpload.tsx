@@ -155,6 +155,10 @@ const DocumentUpload: React.FC<Props> = ({ onUpload }) => {
           <label className="block text-sm font-medium text-slate-700 mb-1">
             Skany / Zdjęcia (wybierz do 3 plików)
           </label>
+          <p className="text-[10px] text-orange-600 font-bold mb-2 flex items-center">
+            <i className="fas fa-exclamation-triangle mr-1"></i>
+            Uwaga: Maksymalna wielkość jednego pliku to 4.5MB (limit Vercel).
+          </p>
           <div className="relative border-2 border-dashed border-slate-200 rounded-lg p-4 hover:border-blue-400 transition group bg-slate-50">
             <input
               type="file"
