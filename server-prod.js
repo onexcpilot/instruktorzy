@@ -127,11 +127,20 @@ app.post('/api/upload-document', async (req, res) => {
 });
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+    let smtpStatus = 'not_tested';
+    try {
+        await transporter.verify();
+        smtpStatus = 'connected';
+    } catch (e) {
+        smtpStatus = `error: ${e.message}`;
+    }
+
     res.json({
         status: 'ok',
         service: 'Sierra Zulu Production Service (Domenomania)',
-        smtp: !!process.env.SMTP_USER,
+        smtp: smtpStatus,
+        smtp_user: process.env.SMTP_USER ? 'Configured' : 'Missing',
         timestamp: new Date().toISOString()
     });
 });
