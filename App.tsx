@@ -29,7 +29,7 @@ declare global {
 
 const LOGO_URL = "https://sierrazulu.waw.pl/wp-content/uploads/2025/03/Podnagloweklustrzane1.png";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -37,21 +37,17 @@ const App: React.FC = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [viewingInstructor, setViewingInstructor] = useState<User | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
-  
+
   // Production: EmailJS konfiguracja jest na serwerze (server.js)
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
-  const [lastInviteInfo, setLastInviteInfo] = useState<{email: string, pass: string, sent: boolean, error?: string} | null>(null);
+  const [lastInviteInfo, setLastInviteInfo] = useState<{ email: string, pass: string, sent: boolean, error?: string } | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [newPass, setNewPass] = useState('');
-  const [adminChangePass, setAdminChangePass] = useState<{userId: string, pass: string} | null>(null);
+  const [adminChangePass, setAdminChangePass] = useState<{ userId: string, pass: string } | null>(null);
 
   useEffect(() => {
-    // Inicjalizacja EmailJS jeśli klucz jest dostępny
-    if (emailConfig.publicKey && window.emailjs) {
-      window.emailjs.init(emailConfig.publicKey);
-    }
-
+    // EmailJS jest konfigurowany na backendzie (server.js), nie ma potrzeby inicjalizacji na frontendzie
     const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
 
     const handleCredentialResponse = (response: any) => {
@@ -59,7 +55,7 @@ const App: React.FC = () => {
         const payload = JSON.parse(atob(response.credential.split('.')[1]));
         const userEmail = payload.email;
         let user = findUserByEmail(userEmail);
-        
+
         if (!user && userEmail === ADMIN_EMAIL) {
           const db = getDb();
           user = {
@@ -99,7 +95,7 @@ const App: React.FC = () => {
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: CALENDAR_SCOPE,
-          callback: '', 
+          callback: '',
         });
         setTokenClient(client);
       }
@@ -112,7 +108,7 @@ const App: React.FC = () => {
       }
     }, 500);
     return () => clearInterval(scriptCheck);
-  }, [currentUser, emailConfig.publicKey]);
+  }, [currentUser]);
 
   const handleEmailLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,22 +129,22 @@ const App: React.FC = () => {
       return;
     }
     setIsSending(true);
-    const tempPass = 'Temp' + Math.random().toString(36).substring(2, 10).toUpperCase(); 
+    const tempPass = 'Temp' + Math.random().toString(36).substring(2, 10).toUpperCase();
     const targetEmail = inviteEmail;
 
     // 1. Dodanie do bazy
     const db = getDb();
     if (!db.users.find(u => u.email === targetEmail)) {
-        db.users.push({
-            id: Math.random().toString(36).substring(7),
-            email: targetEmail,
-            password: hashPassword(tempPass),
-            fullName: targetEmail.split('@')[0],
-            role: UserRole.INSTRUCTOR,
-            documents: [],
-            isInvited: true
-        });
-        saveDb(db);
+      db.users.push({
+        id: Math.random().toString(36).substring(7),
+        email: targetEmail,
+        password: hashPassword(tempPass),
+        fullName: targetEmail.split('@')[0],
+        role: UserRole.INSTRUCTOR,
+        documents: [],
+        isInvited: true
+      });
+      saveDb(db);
     }
 
     // 2. Wysyłka e-maila przez backend
@@ -252,14 +248,14 @@ const App: React.FC = () => {
           <img src={LOGO_URL} alt="Sierra Zulu" className="h-20 mx-auto mb-6" />
           <h1 className="text-2xl font-black uppercase italic mb-8">Sierra Zulu Portal</h1>
           <form onSubmit={handleEmailLogin} className="space-y-4 mb-6">
-               <input type="email" placeholder="Email" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} />
-               <input type="password" placeholder="Hasło" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginPass} onChange={e => setLoginPass(e.target.value)} />
-               <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs hover:bg-slate-800 transition-all shadow-xl">Zaloguj się</button>
+            <input type="email" placeholder="Email" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} />
+            <input type="password" placeholder="Hasło" required className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center" value={loginPass} onChange={e => setLoginPass(e.target.value)} />
+            <button type="submit" className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs hover:bg-slate-800 transition-all shadow-xl">Zaloguj się</button>
           </form>
           <div className="relative flex py-2 items-center mb-6">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink mx-4 text-[10px] font-black text-slate-400 uppercase">lub</span>
-              <div className="flex-grow border-t border-slate-200"></div>
+            <div className="flex-grow border-t border-slate-200"></div>
+            <span className="flex-shrink mx-4 text-[10px] font-black text-slate-400 uppercase">lub</span>
+            <div className="flex-grow border-t border-slate-200"></div>
           </div>
           <div id="google_login_btn"></div>
         </div>
@@ -278,7 +274,7 @@ const App: React.FC = () => {
           <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase italic">Aviation Portal</span>
         </div>
         <nav className="flex-1 space-y-4">
-          <button onClick={() => {setActiveTab('dashboard'); setViewingInstructor(null);}} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' && !viewingInstructor ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
+          <button onClick={() => { setActiveTab('dashboard'); setViewingInstructor(null); }} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' && !viewingInstructor ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
             <i className="fas fa-user-pilot"></i><span className="font-black text-xs uppercase italic">Mój Profil</span>
           </button>
           {isAdmin && (
@@ -304,15 +300,15 @@ const App: React.FC = () => {
               <div className="lg:col-span-8 space-y-8">
                 <LawSummary />
                 <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 space-y-4">
-                   {currentUser.documents.filter(d => !d.isArchived).map(doc => (
-                     <div key={doc.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
-                       <div>
-                            <p className="font-black text-xs uppercase italic">{doc.name}</p>
-                            <p className="text-[9px] font-bold text-slate-400">Termin: {doc.expiryDate || 'Bezterminowo'}</p>
-                       </div>
-                       <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center"><i className="fas fa-eye"></i></a>
-                     </div>
-                   ))}
+                  {currentUser.documents.filter(d => !d.isArchived).map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
+                      <div>
+                        <p className="font-black text-xs uppercase italic">{doc.name}</p>
+                        <p className="text-[9px] font-bold text-slate-400">Termin: {doc.expiryDate || 'Bezterminowo'}</p>
+                      </div>
+                      <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center"><i className="fas fa-eye"></i></a>
+                    </div>
+                  ))}
                 </div>
               </div>
               <div className="lg:col-span-4"><DocumentUpload onUpload={handleDocUpload} /></div>
@@ -324,46 +320,46 @@ const App: React.FC = () => {
           <div className="max-w-5xl mx-auto space-y-12">
             <header className="flex justify-between items-center"><h1 className="text-4xl font-black text-slate-900 uppercase italic">Baza Pilotów</h1></header>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-               <div className="lg:col-span-4 space-y-6">
-                  <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
-                    <h3 className="font-black text-xs uppercase mb-6 italic text-blue-600">Zaproś nowego</h3>
-                    <form onSubmit={handleInvite} className="space-y-4">
-                      <input type="email" required placeholder="E-mail instruktora" className="w-full p-4 bg-slate-50 rounded-xl outline-none text-sm" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
-                      <button disabled={isSending} className={`w-full ${isSending ? 'bg-slate-400' : 'bg-blue-600'} text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-lg transition-all`}>
-                        {isSending ? 'Trwa wysyłka...' : 'Zaproś Instruktora'}
-                      </button>
-                    </form>
-                  </div>
-                  {lastInviteInfo && (
-                    <div className={`p-8 rounded-[2.5rem] border ${lastInviteInfo.sent ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-                        <h4 className={`text-[10px] font-black uppercase mb-3 ${lastInviteInfo.sent ? 'text-green-700' : 'text-orange-700'}`}>
-                            {lastInviteInfo.sent ? 'Zaproszenie wysłane!' : 'Błąd wysyłki automatu'}
-                        </h4>
-                        <div className="bg-white p-4 rounded-xl text-[10px] font-mono break-all mb-4">
-                            Login: {lastInviteInfo.email}<br/>Hasło: {lastInviteInfo.pass}
-                        </div>
-                        <button onClick={() => copyToClipboard(`Zaproszenie Sierra Zulu:\nLogin: ${lastInviteInfo.email}\nHasło: ${lastInviteInfo.pass}\nLink: ${window.location.origin}`)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-[9px] font-black uppercase">Skopiuj dane ręcznie</button>
+              <div className="lg:col-span-4 space-y-6">
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+                  <h3 className="font-black text-xs uppercase mb-6 italic text-blue-600">Zaproś nowego</h3>
+                  <form onSubmit={handleInvite} className="space-y-4">
+                    <input type="email" required placeholder="E-mail instruktora" className="w-full p-4 bg-slate-50 rounded-xl outline-none text-sm" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+                    <button disabled={isSending} className={`w-full ${isSending ? 'bg-slate-400' : 'bg-blue-600'} text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest shadow-lg transition-all`}>
+                      {isSending ? 'Trwa wysyłka...' : 'Zaproś Instruktora'}
+                    </button>
+                  </form>
+                </div>
+                {lastInviteInfo && (
+                  <div className={`p-8 rounded-[2.5rem] border ${lastInviteInfo.sent ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                    <h4 className={`text-[10px] font-black uppercase mb-3 ${lastInviteInfo.sent ? 'text-green-700' : 'text-orange-700'}`}>
+                      {lastInviteInfo.sent ? 'Zaproszenie wysłane!' : 'Błąd wysyłki automatu'}
+                    </h4>
+                    <div className="bg-white p-4 rounded-xl text-[10px] font-mono break-all mb-4">
+                      Login: {lastInviteInfo.email}<br />Hasło: {lastInviteInfo.pass}
                     </div>
-                  )}
-               </div>
-               <div className="lg:col-span-8">
-                  <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8 text-right">Opcje</th></tr></thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {allInstructors.map(inst => (
-                          <tr key={inst.id} className="hover:bg-slate-50/50">
-                            <td className="p-8"><p className="font-black text-xs uppercase italic">{inst.fullName}</p><p className="text-[10px] text-slate-400">{inst.email}</p></td>
-                            <td className="p-8 text-right space-x-2">
-                                <button onClick={() => setViewingInstructor(inst)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Akta</button>
-                                <button onClick={() => setAdminChangePass({userId: inst.id, pass: ''})} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Hasło</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <button onClick={() => copyToClipboard(`Zaproszenie Sierra Zulu:\nLogin: ${lastInviteInfo.email}\nHasło: ${lastInviteInfo.pass}\nLink: ${window.location.origin}`)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-[9px] font-black uppercase">Skopiuj dane ręcznie</button>
                   </div>
-               </div>
+                )}
+              </div>
+              <div className="lg:col-span-8">
+                <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8 text-right">Opcje</th></tr></thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {allInstructors.map(inst => (
+                        <tr key={inst.id} className="hover:bg-slate-50/50">
+                          <td className="p-8"><p className="font-black text-xs uppercase italic">{inst.fullName}</p><p className="text-[10px] text-slate-400">{inst.email}</p></td>
+                          <td className="p-8 text-right space-x-2">
+                            <button onClick={() => setViewingInstructor(inst)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Akta</button>
+                            <button onClick={() => setAdminChangePass({ userId: inst.id, pass: '' })} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Hasło</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -376,9 +372,9 @@ const App: React.FC = () => {
               <p className="text-sm text-blue-700">EmailJS i Google Calendar są skonfigurowane na serwerze. Wysyłka emaili i synchronizacja kalendarza pracują automatycznie.</p>
             </div>
             <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
-                <h2 className="font-black text-sm uppercase mb-6 italic">Zmiana Hasła</h2>
-                <input type="password" placeholder="Nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl text-sm mb-4" value={newPass} onChange={e => setNewPass(e.target.value)} />
-                <button onClick={() => {if(newPass.length>=8){const db = getDb(); const updated = {...currentUser!, password: hashPassword(newPass)}; updateUser(updated); setCurrentUser(updated); setNewPass(''); alert("Hasło zmieniono!");} else alert('Min. 8 znaków')}} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj Moje Hasło</button>
+              <h2 className="font-black text-sm uppercase mb-6 italic">Zmiana Hasła</h2>
+              <input type="password" placeholder="Nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl text-sm mb-4" value={newPass} onChange={e => setNewPass(e.target.value)} />
+              <button onClick={() => { if (newPass.length >= 8) { const db = getDb(); const updated = { ...currentUser!, password: hashPassword(newPass) }; updateUser(updated); setCurrentUser(updated); setNewPass(''); alert("Hasło zmieniono!"); } else alert('Min. 8 znaków') }} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl uppercase text-[10px] tracking-widest">Zaktualizuj Moje Hasło</button>
             </div>
           </div>
         )}
@@ -407,16 +403,16 @@ const App: React.FC = () => {
         )}
 
         {adminChangePass && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-                <div className="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-md text-center">
-                    <h3 className="text-xl font-black uppercase italic mb-6">Ustaw nowe hasło</h3>
-                    <input type="text" placeholder="Wpisz nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center font-bold mb-6" value={adminChangePass.pass} onChange={e => setAdminChangePass({...adminChangePass, pass: e.target.value})} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <button onClick={() => setAdminChangePass(null)} className="py-4 text-[10px] font-black uppercase text-slate-400">Anuluj</button>
-                        <button onClick={() => handleAdminResetPass(adminChangePass.userId)} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100">Zapisz</button>
-                    </div>
-                </div>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+            <div className="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-md text-center">
+              <h3 className="text-xl font-black uppercase italic mb-6">Ustaw nowe hasło</h3>
+              <input type="text" placeholder="Wpisz nowe hasło" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 text-center font-bold mb-6" value={adminChangePass.pass} onChange={e => setAdminChangePass({ ...adminChangePass, pass: e.target.value })} />
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setAdminChangePass(null)} className="py-4 text-[10px] font-black uppercase text-slate-400">Anuluj</button>
+                <button onClick={() => handleAdminResetPass(adminChangePass.userId)} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100">Zapisz</button>
+              </div>
             </div>
+          </div>
         )}
       </main>
     </div>
