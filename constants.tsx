@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export const ADMIN_EMAIL = 'onexcpilot@gmail.com';
+export const ADMIN_EMAIL = 'kontakt@sierrazulu.waw.pl';
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export const AVIATION_LAW_SUMMARY = {
