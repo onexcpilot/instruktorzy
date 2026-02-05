@@ -2,7 +2,7 @@
 import { User, UserRole, Invitation } from '../types';
 import { ADMIN_EMAIL } from '../constants';
 
-const DB_KEY = 'sierra_zulu_db_v1';
+const DB_KEY = 'sierra_zulu_db_v2';
 
 interface DbSchema {
   users: User[];
@@ -54,9 +54,9 @@ export const findUserByEmail = (email: string) => {
 };
 
 export const updateUser = (updatedUser: User) => {
-    const db = getDb();
-    db.users = db.users.map(u => u.id === updatedUser.id ? updatedUser : u);
-    saveDb(db);
+  const db = getDb();
+  db.users = db.users.map(u => u.id === updatedUser.id ? updatedUser : u);
+  saveDb(db);
 };
 
 export const createInvitation = (email: string): Invitation => {
