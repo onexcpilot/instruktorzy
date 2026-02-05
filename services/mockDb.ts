@@ -10,7 +10,7 @@ interface DbSchema {
 }
 
 // Prosty hash dla demo (w produkcji użyć bcrypt)
-const hashPassword = (pass: string): string => {
+export const hashPassword = (pass: string): string => {
   let hash = 0;
   for (let i = 0; i < pass.length; i++) {
     const char = pass.charCodeAt(i);
@@ -78,5 +78,3 @@ export const createInvitation = (email: string): Invitation => {
 export const validatePassword = (pass: string, hash: string): boolean => {
   return hashPassword(pass) === hash;
 };
-
-export { hashPassword };
