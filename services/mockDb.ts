@@ -14,6 +14,7 @@ const initialDb: DbSchema = {
     {
       id: 'admin_1',
       email: ADMIN_EMAIL,
+      password: 'sierra', // Hasło startowe dla administratora
       fullName: 'Administrator Główny',
       role: UserRole.ADMIN,
       documents: [],
@@ -25,7 +26,11 @@ const initialDb: DbSchema = {
 
 export const getDb = (): DbSchema => {
   const data = localStorage.getItem(DB_KEY);
-  return data ? JSON.parse(data) : initialDb;
+  if (!data) {
+    saveDb(initialDb);
+    return initialDb;
+  }
+  return JSON.parse(data);
 };
 
 export const saveDb = (db: DbSchema) => {
@@ -34,16 +39,17 @@ export const saveDb = (db: DbSchema) => {
 
 export const findUserByEmail = (email: string) => {
   const db = getDb();
-  return db.users.find(u => u.email === email);
+  return db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
 };
 
-export const getAllInvitations = (): Invitation[] => {
-  return getDb().invitations;
+export const updateUser = (updatedUser: User) => {
+    const db = getDb();
+    db.users = db.users.map(u => u.id === updatedUser.id ? updatedUser : u);
+    saveDb(db);
 };
 
 export const createInvitation = (email: string): Invitation => {
   const db = getDb();
-  // Check if already invited
   const existing = db.invitations.find(i => i.email === email);
   if (existing) return existing;
 
@@ -56,13 +62,4 @@ export const createInvitation = (email: string): Invitation => {
   db.invitations.push(invitation);
   saveDb(db);
   return invitation;
-};
-
-export const acceptInvitation = (email: string) => {
-  const db = getDb();
-  const invitation = db.invitations.find(i => i.email === email);
-  if (invitation) {
-    invitation.status = 'accepted';
-    saveDb(db);
-  }
 };

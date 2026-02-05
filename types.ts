@@ -20,12 +20,13 @@ export interface DocumentRecord {
   attachments: DocumentAttachment[];
   uploadDate: string;
   status: 'valid' | 'expired' | 'pending_review';
-  isArchived?: boolean; // Nowe pole do obsługi historii
+  isArchived?: boolean;
 }
 
 export interface User {
   id: string;
   email: string;
+  password?: string; // Nowe pole na hasło (min 6 znaków)
   fullName: string;
   role: UserRole;
   licenseNumber?: string;
