@@ -35,6 +35,7 @@ export default async function handler(req, res) {
                 service_id: process.env.EMAILJS_SERVICE_ID,
                 template_id: process.env.EMAILJS_TEMPLATE_ID,
                 user_id: process.env.EMAILJS_PUBLIC_KEY,
+                accessToken: process.env.EMAILJS_PRIVATE_KEY, // Dodano klucz prywatny dla backendu
                 template_params: {
                     to_email,
                     password,
