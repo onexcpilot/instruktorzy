@@ -1,0 +1,8 @@
+
+{
+  "name": "Aviation Sierra Zulu - Panel Instruktora",
+  "description": "A comprehensive portal for DTO Aviation Sierra Zulu to manage instructor medical certificates, ratings, and compliance documents with automated alerts and administrative oversight.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
