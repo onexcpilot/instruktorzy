@@ -1,10 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, UserRole, DocumentRecord } from './types';
 import { findUserByEmail, getDb, saveDb, createInvitation, updateUser, hashPassword, validatePassword } from './services/mockDb';
 import { ADMIN_EMAIL } from './constants';
+import { scanAllExpiries, getAlertsSummary, computeDocumentStatus } from './services/expiryChecker';
 import LawSummary from './components/LawSummary';
 import DocumentUpload from './components/DocumentUpload';
+import NotificationDashboard from './components/NotificationDashboard';
+import ExpiryAlertBanner from './components/ExpiryAlertBanner';
 
 declare global {
   interface Window {
@@ -33,7 +36,7 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'admin' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'admin' | 'notifications' | 'settings'>('dashboard');
   const [inviteEmail, setInviteEmail] = useState('');
   const [viewingInstructor, setViewingInstructor] = useState<User | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
@@ -210,14 +213,18 @@ const App: React.FC = () => {
   };
 
   const handleAdminResetPass = (userId: string) => {
-    if (!adminChangePass) return;
+    if (!adminChangePass || !adminChangePass.pass) return;
+    if (adminChangePass.pass.length < 8) {
+      alert('Haslo musi miec minimum 8 znakow.');
+      return;
+    }
     const db = getDb();
     const userIndex = db.users.findIndex(u => u.id === userId);
     if (userIndex !== -1) {
-      db.users[userIndex].password = adminChangePass.pass;
+      db.users[userIndex].password = hashPassword(adminChangePass.pass);
       saveDb(db);
       setAdminChangePass(null);
-      alert("Hasło zmienione.");
+      alert("Haslo zmienione i zahashowane.");
     }
   };
 
@@ -278,9 +285,22 @@ const App: React.FC = () => {
             <i className="fas fa-user-pilot"></i><span className="font-black text-xs uppercase italic">Mój Profil</span>
           </button>
           {isAdmin && (
-            <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
-              <i className="fas fa-tower-control"></i><span className="font-black text-xs uppercase italic">Instruktorzy</span>
-            </button>
+            <>
+              <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
+                <i className="fas fa-tower-control"></i><span className="font-black text-xs uppercase italic">Instruktorzy</span>
+              </button>
+              <button onClick={() => { setActiveTab('notifications'); setViewingInstructor(null); }} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all relative ${activeTab === 'notifications' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
+                <i className="fas fa-bell"></i>
+                <span className="font-black text-xs uppercase italic">Powiadomienia</span>
+                {(() => {
+                  const alertsSummary = getAlertsSummary(scanAllExpiries(allInstructors));
+                  const urgentCount = alertsSummary.expired + alertsSummary.critical;
+                  return urgentCount > 0 ? (
+                    <span className="absolute top-2 right-2 w-5 h-5 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">{urgentCount}</span>
+                  ) : null;
+                })()}
+              </button>
+            </>
           )}
           <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center space-x-5 px-6 py-4 rounded-2xl transition-all ${activeTab === 'settings' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>
             <i className="fas fa-cog"></i><span className="font-black text-xs uppercase italic">Ustawienia</span>
@@ -292,23 +312,52 @@ const App: React.FC = () => {
         </div>
       </aside>
 
+      {/* Mobile navigation */}
+      <div className="md:hidden flex items-center justify-between bg-slate-900 p-4 text-white">
+        <img src={LOGO_URL} alt="Logo" className="h-8" />
+        <div className="flex gap-2">
+          <button onClick={() => { setActiveTab('dashboard'); setViewingInstructor(null); }} className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase ${activeTab === 'dashboard' ? 'bg-blue-600' : 'bg-slate-800'}`}>Profil</button>
+          {isAdmin && <button onClick={() => setActiveTab('admin')} className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase ${activeTab === 'admin' ? 'bg-blue-600' : 'bg-slate-800'}`}>Piloci</button>}
+          {isAdmin && (
+            <button onClick={() => { setActiveTab('notifications'); setViewingInstructor(null); }} className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase relative ${activeTab === 'notifications' ? 'bg-blue-600' : 'bg-slate-800'}`}>
+              <i className="fas fa-bell"></i>
+              {(() => {
+                const s = getAlertsSummary(scanAllExpiries(allInstructors));
+                return (s.expired + s.critical) > 0 ? <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-[7px] font-black rounded-full flex items-center justify-center">{s.expired + s.critical}</span> : null;
+              })()}
+            </button>
+          )}
+          <button onClick={() => setActiveTab('settings')} className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase ${activeTab === 'settings' ? 'bg-blue-600' : 'bg-slate-800'}`}><i className="fas fa-cog"></i></button>
+          <button onClick={() => setCurrentUser(null)} className="px-3 py-2 rounded-xl text-[8px] font-black uppercase bg-red-900"><i className="fas fa-sign-out-alt"></i></button>
+        </div>
+      </div>
+
       <main className="flex-1 p-6 md:p-14 overflow-y-auto">
         {activeTab === 'dashboard' && !viewingInstructor && (
           <div className="max-w-5xl mx-auto space-y-12">
             <header><h1 className="text-4xl font-black text-slate-900 uppercase italic">Moje Dokumenty</h1></header>
+            <ExpiryAlertBanner user={currentUser} />
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
               <div className="lg:col-span-8 space-y-8">
                 <LawSummary />
                 <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 space-y-4">
-                  {currentUser.documents.filter(d => !d.isArchived).map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl">
-                      <div>
-                        <p className="font-black text-xs uppercase italic">{doc.name}</p>
-                        <p className="text-[9px] font-bold text-slate-400">Termin: {doc.expiryDate || 'Bezterminowo'}</p>
+                  {currentUser.documents.filter(d => !d.isArchived).map(doc => {
+                    const status = computeDocumentStatus(doc);
+                    const isExpired = status === 'expired';
+                    const docBg = isExpired ? 'bg-red-50 border border-red-200' : 'bg-slate-50';
+                    return (
+                      <div key={doc.id} className={`flex items-center justify-between p-6 ${docBg} rounded-3xl`}>
+                        <div>
+                          <p className="font-black text-xs uppercase italic">{doc.name}</p>
+                          <p className={`text-[9px] font-bold ${isExpired ? 'text-red-500' : 'text-slate-400'}`}>
+                            Termin: {doc.expiryDate || 'Bezterminowo'}
+                            {isExpired && ' - WYGASLO'}
+                          </p>
+                        </div>
+                        <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center"><i className="fas fa-eye"></i></a>
                       </div>
-                      <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center"><i className="fas fa-eye"></i></a>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div className="lg:col-span-4"><DocumentUpload onUpload={handleDocUpload} /></div>
@@ -345,22 +394,48 @@ const App: React.FC = () => {
               <div className="lg:col-span-8">
                 <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden">
                   <table className="w-full">
-                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8 text-right">Opcje</th></tr></thead>
+                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr className="text-left"><th className="p-8">Instruktor</th><th className="p-8">Status dok.</th><th className="p-8 text-right">Opcje</th></tr></thead>
                     <tbody className="divide-y divide-slate-50">
-                      {allInstructors.map(inst => (
-                        <tr key={inst.id} className="hover:bg-slate-50/50">
+                      {allInstructors.map(inst => {
+                        const instAlerts = scanAllExpiries([inst]);
+                        const instSummary = getAlertsSummary(instAlerts);
+                        const hasUrgent = instSummary.expired > 0 || instSummary.critical > 0;
+                        const hasWarning = instSummary.warning > 0;
+                        return (
+                        <tr key={inst.id} className={`hover:bg-slate-50/50 ${hasUrgent ? 'bg-red-50/30' : ''}`}>
                           <td className="p-8"><p className="font-black text-xs uppercase italic">{inst.fullName}</p><p className="text-[10px] text-slate-400">{inst.email}</p></td>
+                          <td className="p-8">
+                            {instAlerts.length === 0 ? (
+                              <span className="text-[9px] font-black text-green-600 uppercase">OK</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {instSummary.expired > 0 && <span className="px-2 py-0.5 bg-red-600 text-white rounded text-[8px] font-black">{instSummary.expired} wygasle</span>}
+                                {instSummary.critical > 0 && <span className="px-2 py-0.5 bg-orange-500 text-white rounded text-[8px] font-black">{instSummary.critical} pilne</span>}
+                                {hasWarning && <span className="px-2 py-0.5 bg-amber-500 text-white rounded text-[8px] font-black">{instSummary.warning} ostrz.</span>}
+                              </div>
+                            )}
+                          </td>
                           <td className="p-8 text-right space-x-2">
                             <button onClick={() => setViewingInstructor(inst)} className="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Akta</button>
-                            <button onClick={() => setAdminChangePass({ userId: inst.id, pass: '' })} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Hasło</button>
+                            <button onClick={() => setAdminChangePass({ userId: inst.id, pass: '' })} className="bg-blue-50 text-blue-600 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Haslo</button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'notifications' && isAdmin && (
+          <div className="max-w-6xl mx-auto">
+            <NotificationDashboard
+              users={allInstructors}
+              onViewInstructor={(inst) => { setViewingInstructor(inst); setActiveTab('dashboard'); }}
+            />
           </div>
         )}
 
@@ -385,9 +460,17 @@ const App: React.FC = () => {
             <div className="bg-white p-12 rounded-[4rem] shadow-2xl">
               <h2 className="text-4xl font-black uppercase italic mb-10">{viewingInstructor.fullName}</h2>
               <div className="space-y-4">
-                {viewingInstructor.documents.filter(d => !d.isArchived).map(doc => (
-                  <div key={doc.id} className="p-8 bg-slate-50 rounded-[2.5rem] flex items-center justify-between">
-                    <div><p className="font-black text-sm uppercase italic">{doc.name}</p><p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Wygasa: {doc.expiryDate || 'N/A'}</p></div>
+                {viewingInstructor.documents.filter(d => !d.isArchived).map(doc => {
+                  const docStatus = computeDocumentStatus(doc);
+                  const isExp = docStatus === 'expired';
+                  return (
+                  <div key={doc.id} className={`p-8 ${isExp ? 'bg-red-50 border border-red-200' : 'bg-slate-50'} rounded-[2.5rem] flex items-center justify-between`}>
+                    <div>
+                      <p className="font-black text-sm uppercase italic">{doc.name}</p>
+                      <p className={`text-[10px] font-bold uppercase mt-1 ${isExp ? 'text-red-500' : 'text-slate-400'}`}>
+                        Wygasa: {doc.expiryDate || 'N/A'} {isExp && '- WYGASLO'}
+                      </p>
+                    </div>
                     <div className="flex space-x-3">
                       {doc.expiryDate && (
                         <button onClick={() => handleGoogleCalendarSync(doc, viewingInstructor.fullName)} className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><i className="fas fa-calendar-plus"></i></button>
@@ -395,7 +478,8 @@ const App: React.FC = () => {
                       <a href={doc.attachments[0]?.fileUrl} target="_blank" className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center shadow-lg"><i className="fas fa-eye"></i></a>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 {viewingInstructor.documents.length === 0 && <p className="text-center py-10 text-slate-400 uppercase font-black text-xs">Brak wgranych dokumentów</p>}
               </div>
             </div>

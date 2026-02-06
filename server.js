@@ -116,6 +116,84 @@ app.post('/api/upload-document', async (req, res) => {
   }
 });
 
+// Endpoint do wysylki powiadomien o wygasajacych dokumentach
+app.post('/api/send-notification', async (req, res) => {
+  try {
+    const { users } = req.body;
+    if (!users || !users.length) {
+      return res.status(400).json({ error: 'No users data provided' });
+    }
+
+    const allAlerts = [];
+    for (const user of users) {
+      if (user.role !== 'INSTRUCTOR') continue;
+      const docs = (user.documents || []).filter(d => !d.isArchived);
+      for (const doc of docs) {
+        if (!doc.expiryDate) continue;
+        const now = new Date(); now.setHours(0,0,0,0);
+        const expiry = new Date(doc.expiryDate); expiry.setHours(0,0,0,0);
+        const days = Math.ceil((expiry - now) / (1000*60*60*24));
+        let level = null;
+        if (days <= 0) level = 'expired';
+        else if (days <= 7) level = 'critical';
+        else if (days <= 30) level = 'warning';
+        else if (days <= 90) level = 'info';
+        if (level) {
+          allAlerts.push({
+            instructorId: user.id,
+            instructorName: user.fullName,
+            instructorEmail: user.email,
+            documentName: doc.name || doc.type,
+            documentType: doc.type,
+            expiryDate: doc.expiryDate,
+            daysRemaining: days,
+            level,
+          });
+        }
+      }
+    }
+
+    if (allAlerts.length === 0) {
+      return res.json({ success: true, message: 'No expiring documents', sent: 0 });
+    }
+
+    // Grupuj per instruktor i wyslij emaile
+    const grouped = {};
+    for (const a of allAlerts) {
+      if (!grouped[a.instructorEmail]) grouped[a.instructorEmail] = { name: a.instructorName, alerts: [] };
+      grouped[a.instructorEmail].alerts.push(a);
+    }
+
+    const results = [];
+    for (const [email, data] of Object.entries(grouped)) {
+      const hasUrgent = data.alerts.some(a => ['expired','critical','warning'].includes(a.level));
+      if (!hasUrgent) continue;
+
+      try {
+        const urgentCount = data.alerts.filter(a => a.level === 'expired' || a.level === 'critical').length;
+        const subject = urgentCount > 0
+          ? `[PILNE] Sierra Zulu - ${urgentCount} wygasajacych dokumentow`
+          : `Sierra Zulu - Przypomnienie o dokumentach`;
+
+        await sendEmail(
+          process.env.EMAILJS_SERVICE_ID,
+          process.env.EMAILJS_NOTIFICATION_TEMPLATE_ID || process.env.EMAILJS_TEMPLATE_ID,
+          process.env.EMAILJS_PUBLIC_KEY,
+          { to_email: email, subject, message: `Masz ${data.alerts.length} dokumentow wymagajacych uwagi. Zaloguj sie do portalu.`, from_name: 'Sierra Zulu DTO' }
+        );
+        results.push({ email, sent: true, alertsCount: data.alerts.length });
+      } catch (err) {
+        results.push({ email, sent: false, error: err.message });
+      }
+    }
+
+    res.json({ success: true, totalAlerts: allAlerts.length, results, alerts: allAlerts });
+  } catch (error) {
+    console.error('Notification Error:', error);
+    res.status(500).json({ error: 'Failed to process notifications', details: error.message });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   const blobConfigured = !!BLOB_TOKEN;
