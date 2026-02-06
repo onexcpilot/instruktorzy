@@ -264,7 +264,7 @@ const App: React.FC = () => {
             <span className="flex-shrink mx-4 text-[10px] font-black text-slate-400 uppercase">lub</span>
             <div className="flex-grow border-t border-slate-200"></div>
           </div>
-          <div id="google_login_btn"></div>
+          <div className="flex justify-center"><div id="google_login_btn"></div></div>
         </div>
       </div>
     );
