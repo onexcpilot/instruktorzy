@@ -1,7 +1,5 @@
-import { User, UserRole, DocumentRecord, ExpiryAlert, NotificationLevel, NotificationRecord, NotificationLog } from '../types';
+import { User, UserRole, DocumentRecord, ExpiryAlert, NotificationLevel } from '../types';
 import { NOTIFICATION_THRESHOLDS, EXPIRY_TRACKED_TYPES, DOCUMENT_LABELS } from '../constants';
-
-const NOTIFICATION_LOG_KEY = 'sierra_zulu_notifications';
 
 /**
  * Oblicza liczbe dni do wygasniecia dokumentu
@@ -125,41 +123,5 @@ export const getAlertsSummary = (alerts: ExpiryAlert[]) => {
   };
 };
 
-// --- Notification Log (localStorage) ---
-
-export const getNotificationLog = (): NotificationLog => {
-  const data = localStorage.getItem(NOTIFICATION_LOG_KEY);
-  if (!data) return { lastCheckDate: '', notifications: [] };
-  return JSON.parse(data);
-};
-
-export const saveNotificationLog = (log: NotificationLog) => {
-  localStorage.setItem(NOTIFICATION_LOG_KEY, JSON.stringify(log));
-};
-
-export const addNotificationRecord = (record: NotificationRecord) => {
-  const log = getNotificationLog();
-  log.notifications.unshift(record); // najnowsze na poczatku
-  // Trzymaj max 200 rekordow
-  if (log.notifications.length > 200) {
-    log.notifications = log.notifications.slice(0, 200);
-  }
-  log.lastCheckDate = new Date().toISOString();
-  saveNotificationLog(log);
-};
-
-/**
- * Sprawdza czy dane powiadomienie bylo juz wyslane tego samego dnia
- * (zeby nie spamowac wielokrotnie)
- */
-export const wasNotificationSentToday = (instructorEmail: string, documentType: string, level: NotificationLevel): boolean => {
-  const log = getNotificationLog();
-  const today = new Date().toISOString().split('T')[0];
-  return log.notifications.some(n =>
-    n.instructorEmail === instructorEmail &&
-    n.documentType === documentType &&
-    n.alertLevel === level &&
-    n.sentAt.startsWith(today) &&
-    n.emailSent
-  );
-};
+// Notification log functions removed - now handled by MySQL via API
+// See: services/api.ts -> apiGetNotificationLog(), apiSendNotifications()

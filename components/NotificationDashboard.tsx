@@ -1,24 +1,32 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, ExpiryAlert, NotificationLevel } from '../types';
-import { scanAllExpiries, getAlertsSummary, getAlertColor, getAlertLabel, getNotificationLog } from '../services/expiryChecker';
+import { scanAllExpiries, getAlertsSummary, getAlertColor, getAlertLabel } from '../services/expiryChecker';
+import { apiSendNotifications, apiGetNotificationLog } from '../services/api';
 
 interface Props {
   users: User[];
   onViewInstructor: (user: User) => void;
 }
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || '';
-
 const NotificationDashboard: React.FC<Props> = ({ users, onViewInstructor }) => {
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<any>(null);
   const [filterLevel, setFilterLevel] = useState<NotificationLevel | 'all'>('all');
+  const [lastCheckDate, setLastCheckDate] = useState<string>('');
 
   const alerts = useMemo(() => scanAllExpiries(users), [users]);
   const summary = useMemo(() => getAlertsSummary(alerts), [alerts]);
-  const log = getNotificationLog();
 
   const filteredAlerts = filterLevel === 'all' ? alerts : alerts.filter(a => a.level === filterLevel);
+
+  // Pobierz ostatnia date sprawdzenia z logu
+  useEffect(() => {
+    apiGetNotificationLog(1).then(logs => {
+      if (logs.length > 0) {
+        setLastCheckDate(logs[0].sent_at || logs[0].sentAt || '');
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleSendNotifications = async () => {
     if (!confirm('Czy na pewno chcesz wyslac powiadomienia email do instruktorow z wygasajacymi dokumentami?')) return;
@@ -26,15 +34,10 @@ const NotificationDashboard: React.FC<Props> = ({ users, onViewInstructor }) => 
     setSendResult(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/send-notification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users }),
-      });
-      const result = await response.json();
+      const result = await apiSendNotifications();
       setSendResult(result);
-    } catch (err) {
-      setSendResult({ error: 'Brak polaczenia z serwerem email.' });
+    } catch (err: any) {
+      setSendResult({ error: err.message || 'Brak polaczenia z serwerem.' });
     }
     setIsSending(false);
   };
@@ -54,8 +57,8 @@ const NotificationDashboard: React.FC<Props> = ({ users, onViewInstructor }) => 
         <div>
           <h2 className="text-2xl font-black uppercase italic text-slate-900">Powiadomienia</h2>
           <p className="text-xs text-slate-400 mt-1">
-            {log.lastCheckDate
-              ? `Ostatnie sprawdzenie: ${new Date(log.lastCheckDate).toLocaleString('pl-PL')}`
+            {lastCheckDate
+              ? `Ostatnie sprawdzenie: ${new Date(lastCheckDate).toLocaleString('pl-PL')}`
               : 'Brak historii powiadomien'}
           </p>
         </div>
@@ -81,11 +84,11 @@ const NotificationDashboard: React.FC<Props> = ({ users, onViewInstructor }) => 
           ) : (
             <div>
               <p className="text-green-700 text-xs font-bold mb-2">
-                Wyslano powiadomienia do {sendResult.instructorsNotified || 0} instruktorow. Alertow: {sendResult.totalAlerts || 0}.
+                Wysylka zakonczona. Alertow: {sendResult.totalAlerts || 0}.
               </p>
               {sendResult.results?.map((r: any, i: number) => (
-                <p key={i} className={`text-[10px] ${r.sent ? 'text-green-600' : 'text-red-600'}`}>
-                  {r.email}: {r.sent ? 'Wyslano' : `Blad: ${r.error}`}
+                <p key={i} className={`text-[10px] ${r.sent ? 'text-green-600' : r.skipped ? 'text-slate-500' : 'text-red-600'}`}>
+                  {r.email}: {r.sent ? 'Wyslano' : r.skipped ? 'Pominiety (juz wysylano dzisiaj)' : `Blad: ${r.error}`}
                 </p>
               ))}
             </div>
