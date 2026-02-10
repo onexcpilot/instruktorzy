@@ -1,7 +1,14 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '.env') });
+
 import express from 'express';
 import cors from 'cors';
-import { put } from '@vercel/blob';
 import {
   findUserByEmail,
   findUserById,
@@ -26,13 +33,24 @@ import nodemailer from 'nodemailer';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || 'https://instruktor.sierrazulu.waw.pl';
-app.use(cors({ origin: ALLOWED_ORIGIN, credentials: true }));
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Vercel Blob token
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+// Uploads directory
+const UPLOADS_DIR = join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Serwowanie frontendu (zbudowany React)
+app.use(express.static(__dirname, {
+  setHeaders: (res, filePath) => {
+    const forbidden = ['.env', 'server.js', 'server-prod.js', 'package.json', 'package-lock.json', 'db.js'];
+    if (forbidden.some(file => filePath.endsWith(file))) {
+      res.status(403).end();
+    }
+  }
+}));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // =============================================
 // SMTP Transporter (Domenomania)
@@ -237,23 +255,18 @@ app.post('/api/documents/upload', async (req, res) => {
       return res.status(400).json({ error: 'Brak wymaganych danych' });
     }
 
-    // Upload plikow do Vercel Blob
+    // Upload plikow na dysk serwera
     const attachments = [];
     for (const file of files) {
-      if (!BLOB_TOKEN) {
-        return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN not configured' });
-      }
       const buffer = Buffer.from(file.fileData, 'base64');
-      const uniqueName = `${Date.now()}_${file.fileName}`;
-      const blob = await put(uniqueName, buffer, {
-        access: 'public',
-        token: BLOB_TOKEN,
-        contentType: file.mimeType || 'application/octet-stream',
-      });
+      const safeName = file.fileName.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+      const uniqueName = `${Date.now()}_${safeName}`;
+      const filePath = join(UPLOADS_DIR, uniqueName);
+      fs.writeFileSync(filePath, buffer);
       attachments.push({
         fileName: file.fileName,
         fileSize: file.fileSize || buffer.length,
-        fileUrl: blob.url,
+        fileUrl: `/uploads/${uniqueName}`,
         mimeType: file.mimeType,
       });
     }
@@ -489,9 +502,20 @@ app.get('/api/health', async (req, res) => {
     service: 'Sierra Zulu Portal API',
     database: dbStatus.connected ? 'connected' : 'disconnected',
     dbError: dbStatus.error || undefined,
-    blob: !!BLOB_TOKEN,
     smtp: !!process.env.SMTP_PASS,
   });
+});
+
+// =============================================
+// CATCH-ALL: Serwuj index.html dla React SPA
+// =============================================
+app.get('*', (req, res) => {
+  const indexPath = join(__dirname, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Nie znaleziono index.html. Wgraj zbudowany frontend.');
+  }
 });
 
 // =============================================
