@@ -1,11 +1,5 @@
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-// Wymuszamy sciezke do .env - Passenger na cPanel moze startowac z innego katalogu
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-dotenv.config({ path: resolve(__dirname, '..', '.env') });
+dotenv.config({ path: '/home/dm75078/instruktor.sierrazulu.waw.pl/.env' });
 
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
