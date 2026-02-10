@@ -13,7 +13,7 @@ export function getPool() {
     pool = mysql.createPool({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'dm75078_sierrazulu',
-      password: process.env.DB_PASS || '',
+      password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
       database: process.env.DB_NAME || 'dm75078_instruktor',
       port: parseInt(process.env.DB_PORT || '3306'),
       waitForConnections: true,
