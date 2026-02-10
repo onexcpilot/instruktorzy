@@ -521,18 +521,33 @@ app.get('*', (req, res) => {
 // =============================================
 // STARTUP
 // =============================================
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
 
-  // Test DB
-  const dbStatus = await testConnection();
-  if (dbStatus.connected) {
-    console.log('MySQL: connected');
-    await ensureAdminAccount();
-  } else {
-    console.error('MySQL: FAILED -', dbStatus.error);
+// Init bazy danych przy starcie
+(async () => {
+  try {
+    const dbStatus = await testConnection();
+    if (dbStatus.connected) {
+      console.log('MySQL: connected');
+      await ensureAdminAccount();
+    } else {
+      console.error('MySQL: FAILED -', dbStatus.error);
+    }
+    console.log(`SMTP: ${process.env.SMTP_PASS ? 'configured' : 'NOT configured'}`);
+  } catch (err) {
+    console.error('Init error:', err);
   }
+})();
 
-  console.log(`Blob: ${BLOB_TOKEN ? 'configured' : 'NOT configured'}`);
-  console.log(`SMTP: ${process.env.SMTP_PASS ? 'configured' : 'NOT configured'}`);
-});
+// Eksportuj app dla Passenger (app.js) - NIE wywoluj listen() tutaj
+export default app;
+
+// Jesli uruchomiony bezposrednio (nie przez Passenger): `node server.js`
+const isDirectRun = process.argv[1] && (
+  process.argv[1].endsWith('server.js') ||
+  process.argv[1].endsWith('server')
+);
+if (isDirectRun) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
