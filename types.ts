@@ -41,3 +41,36 @@ export interface Invitation {
   invitedAt: string;
   status: 'pending' | 'accepted';
 }
+
+export type NotificationLevel = 'info' | 'warning' | 'critical' | 'expired';
+
+export interface ExpiryAlert {
+  instructorId: string;
+  instructorName: string;
+  instructorEmail: string;
+  documentId: string;
+  documentName: string;
+  documentType: DocumentRecord['type'];
+  expiryDate: string;
+  daysRemaining: number;
+  level: NotificationLevel;
+}
+
+export interface NotificationRecord {
+  id: string;
+  alertLevel: NotificationLevel;
+  instructorEmail: string;
+  instructorName: string;
+  documentType: DocumentRecord['type'];
+  documentName: string;
+  expiryDate: string;
+  daysRemaining: number;
+  sentAt: string;
+  emailSent: boolean;
+  error?: string;
+}
+
+export interface NotificationLog {
+  lastCheckDate: string;
+  notifications: NotificationRecord[];
+}

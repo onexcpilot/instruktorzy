@@ -30,3 +30,18 @@ export const DOCUMENT_LABELS: Record<string, string> = {
   radio: "Uprawnienia Radiowe",
   contract: "Umowa o współpracę / RODO"
 };
+
+// Progi powiadomien o wygasajacych dokumentach (w dniach)
+export const NOTIFICATION_THRESHOLDS = {
+  INFO: 90,       // 90 dni - informacja
+  WARNING: 30,    // 30 dni - ostrzezenie
+  CRITICAL: 7,    // 7 dni - krytyczne
+  EXPIRED: 0      // wygaslo
+} as const;
+
+// Typy dokumentow ktore maja daty waznosci i wymagaja monitorowania
+export const EXPIRY_TRACKED_TYPES: string[] = ['medical', 'license', 'radio', 'id'];
+
+// Konfiguracja nadawcy powiadomien
+export const NOTIFICATION_SENDER = 'kontakt@sierrazulu.waw.pl';
+export const APP_URL = 'https://instruktor.sierrazulu.waw.pl';

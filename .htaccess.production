@@ -1,0 +1,25 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/dm75078/instruktor.sierrazulu.waw.pl"
+PassengerBaseURI "/"
+PassengerNodejs "/home/dm75078/nodevenv/instruktor.sierrazulu.waw.pl/22/bin/node"
+PassengerAppType node
+PassengerStartupFile app.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+<IfModule Litespeed>
+SetEnv DB_HOST localhost
+SetEnv DB_USER dm75078_sierrazulu
+SetEnv DB_PASSWORD SierraZulu2026dbc
+SetEnv DB_NAME dm75078_instruktor
+SetEnv SMTP_HOST mail.sierrazulu.waw.pl
+SetEnv SMTP_PORT 465
+SetEnv SMTP_USER kontakt@sierrazulu.waw.pl
+SetEnv SMTP_PASS !2wsxcvBNM
+SetEnv APP_URL https://instruktor.sierrazulu.waw.pl
+SetEnv ADMIN_EMAIL kontakt@sierrazulu.waw.pl
+SetEnv JWT_SECRET Sz7kQ9xWdR3mP2vN8jL5tY6uA4hF1bCe
+SetEnv CRON_SECRET Xn4pR8wK2qM6vJ3tB9yL7uHfD5sA1cEg
+SetEnv PORT 3000
+</IfModule>
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END
