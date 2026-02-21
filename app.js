@@ -1,63 +1,99 @@
 "use strict";
 
 /**
- * Passenger (CloudLinux/cPanel) startup file.
- * Passenger nie radzi sobie z ES modules bezposrednio,
- * wiec ten plik CommonJS laduje serwer dynamicznie.
+ * Passenger (CloudLinux/cPanel) entry point.
+ * 
+ * WAZNE: Passenger wymaga zeby ta aplikacja NIE wywolywala app.listen().
+ * Passenger sam binduje Express app do socketu.
+ * Plik MUSI uzyc require() (CommonJS) bo Passenger nie radzi sobie z ES modules.
  */
 
-// Zaladuj zmienne srodowiskowe z .env (backup - glowne sa z .htaccess SetEnv)
 const path = require('path');
+const fs = require('fs');
+const http = require('http');
+
+// =============================================
+// Zaladuj zmienne srodowiskowe
+// =============================================
 try {
   require('dotenv').config({ path: path.join(__dirname, '.env') });
 } catch (e) {
-  // dotenv moze nie byc zainstalowane - env vars z .htaccess SetEnv powinny wystarczyc
+  // dotenv moze nie byc - env vars z .htaccess SetEnv powinny wystarczyc
 }
 
-async function startServer() {
-  try {
-    const server = await import('./server.js');
-    if (server.default && typeof server.default === 'function') {
-      // Jesli server.js eksportuje Express app
-      const app = server.default;
-      const port = process.env.PORT || 3000;
-      app.listen(port, () => {
-        console.log(`Server started on port ${port}`);
-      });
+// =============================================
+// Laduj Express serwer (ES module) dynamicznie
+// =============================================
+
+// Passenger na cPanel wymaga SYNCHRONICZNEGO exportu HTTP servera.
+// Poniewaz server.js to ES module (import/export) - musimy go ladowac asynchronicznie.
+// Rozwiazanie: tworzymy HTTP server natychmiast, a Express podlaczamy po zaladowaniu.
+
+let expressApp = null;
+
+// Natychmiastowy handler HTTP - do momentu zaladowania Express
+function requestHandler(req, res) {
+  if (expressApp) {
+    // Express zaladowany - deleguj
+    return expressApp(req, res);
+  }
+
+  // Express jeszcze nie zaladowany - serwuj statyczne pliki lub czekaj
+  const urlPath = req.url.split('?')[0];
+  const filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
+
+  // Nie serwuj wrazliwych plikow
+  const forbidden = ['.env', 'server.js', 'server-prod.js', 'app.js', 'db.js', 'package.json'];
+  if (forbidden.some(f => filePath.endsWith(f))) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext = path.extname(filePath);
+    const mimeTypes = {
+      '.html': 'text/html; charset=utf-8',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+      '.ttf': 'font/ttf',
+      '.json': 'application/json',
+    };
+    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    // SPA fallback - serwuj index.html
+    const indexPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      fs.createReadStream(indexPath).pipe(res);
+    } else {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>Sierra Zulu - Serwer uruchamia sie...</h1><p>Odswierz strone za kilka sekund.</p>');
     }
-  } catch (err) {
-    console.error('Failed to start server:', err);
-    
-    // Fallback - prosty serwer zeby zobaczyc blad
-    const http = require('http');
-    const fs = require('fs');
-    
-    http.createServer((req, res) => {
-      // Sprobuj serwowac index.html
-      const indexPath = path.join(__dirname, 'index.html');
-      if (req.url.startsWith('/api/')) {
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Server starting...', details: err.message }));
-      } else if (fs.existsSync(indexPath) && (req.url === '/' || req.url === '/index.html')) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(fs.readFileSync(indexPath));
-      } else {
-        // Sprobuj serwowac statyczne pliki
-        const filePath = path.join(__dirname, req.url);
-        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-          const ext = path.extname(filePath);
-          const mimeTypes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-          res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-          res.end(fs.readFileSync(filePath));
-        } else {
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(fs.readFileSync(indexPath));
-        }
-      }
-    }).listen(process.env.PORT || 3000);
-    
-    console.log('Fallback server running');
   }
 }
 
-startServer();
+// Stworz HTTP server natychmiast (Passenger tego wymaga)
+const server = http.createServer(requestHandler);
+
+// Zaladuj Express asynchronicznie w tle
+import('./server.js')
+  .then((mod) => {
+    expressApp = mod.default;
+    console.log('Express app loaded successfully');
+  })
+  .catch((err) => {
+    console.error('Failed to load Express app:', err);
+  });
+
+// Eksportuj server dla Passenger
+// Passenger szuka `module.exports` jako obiektu HTTP server LUB Express app
+module.exports = server;

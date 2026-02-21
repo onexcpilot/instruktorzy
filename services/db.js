@@ -1,5 +1,7 @@
-import dotenv from 'dotenv';
-dotenv.config({ path: '/home/dm75078/instruktor.sierrazulu.waw.pl/.env' });
+// Env vars ladowane przez:
+// 1. Passenger .htaccess SetEnv (produkcja na cPanel)
+// 2. app.js require('dotenv') (backup)
+// 3. Bezposrednio przez node: node --env-file=.env server.js
 
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
